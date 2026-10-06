@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  PROVIDER
+  SUPER_ADMIN
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum RequestStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  AWAITING_COMPLETION
+  COMPLETED
+  DISPUTED
+  RESOLVED
+  CANCELLED
+}
+
+enum JobStatus {
+  ASSIGNED
+  IN_PROGRESS
+  AWAITING_COMPLETION
+  COMPLETED
+  DISPUTED
+  RESOLVED
+  CANCELLED
+}
+
+enum CommentAuthorType {
+  CLIENT
+  PROVIDER
+  ADMIN
+}
+
+enum TransactionType {
+  PAYMENT_RECEIPT
+  MATERIALS
+  REFUND
+  OTHER
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  role               UserRole  @default(PROVIDER)
+  firstName          String
+  lastName           String
+  email              String    @unique
+  phone              String
+  passwordHash       String
+  bio                String?
+  qualifications     String
+  references         String?
+  sop                String
+  categories         String[]
+  serviceAreas       String[]
+  kycStatus          KycStatus @default(PENDING)
+  kycDocumentPath    String?
+  verifiedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  jobs               Job[]     @relation("ProviderJobs")
+  assignedRequests   ServiceRequest[] @relation("AssignedProvider")
+  reviews            Review[]  @relation("ProviderReviews")
+  auditLogs          AuditLog[] @relation("AuditActor")
+}
+
+model ServiceRequest {
+  id                 String       @id @default(cuid())
+  trackingCode       String       @unique
+  clientTokenHash    String
+  clientName         String
+  clientEmail        String
+  clientPhone        String
+  category           String
+  description        String
+  area               String
+  addressNote        String?
+  preferredDate      DateTime?
+  status             RequestStatus @default(OPEN)
+  assignedProviderId String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  assignedProvider   User?        @relation("AssignedProvider", fields: [assignedProviderId], references: [id])
+  job                Job?
+  audits             AuditLog[]
+  comments           Comment[]
+  review             Review?
+  transactions       Transaction[]
+  dispute            Dispute?
+  adminNotes         AdminNote[]
+}
+
+model Job {
+  id               String    @id @default(cuid())
+  requestId        String    @unique
+  providerId       String
+  status            JobStatus @default(ASSIGNED)
+  assignedAt       DateTime  @default(now())
+  startedAt        DateTime?
+  completionAt     DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  request          ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider         User           @relation("ProviderJobs", fields: [providerId], references: [id], onDelete: Restrict)
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  requestId      String
+  actorUserId    String?
+  actorType      CommentAuthorType
+  event          String
+  note           String
+  visibleToClient Boolean @default(false)
+  createdAt      DateTime @default(now())
+
+  request        ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  actor          User?          @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  requestId   String   @unique
+  providerId  String
+  rating      Int
+  emoji       String
+  comment     String
+  createdAt   DateTime @default(now())
+
+  request     ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  provider    User           @relation("ProviderReviews", fields: [providerId], references: [id], onDelete: Restrict)
+}
+
+model Comment {
+  id            String            @id @default(cuid())
+  requestId     String
+  authorType    CommentAuthorType
+  authorUserId  String?
+  text          String
+  isComplaint   Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+
+  request       ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model Dispute {
+  id             String        @id @default(cuid())
+  requestId      String        @unique
+  providerId     String?
+  raisedByType   CommentAuthorType
+  reason         String
+  response       String?
+  resolution     String?
+  status         DisputeStatus @default(OPEN)
+  createdAt      DateTime      @default(now())
+  resolvedAt     DateTime?
+  resolvedById   String?
+
+  request        ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id               String          @id @default(cuid())
+  requestId        String
+  createdByType    CommentAuthorType
+  createdByUserId  String?
+  type             TransactionType
+  amount           Decimal?        @db.Decimal(12, 2)
+  currency         String          @default("NGN")
+  reference        String
+  notes            String?
+  receiptPath      String?
+  createdAt        DateTime        @default(now())
+
+  request          ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model AdminNote {
+  id          String   @id @default(cuid())
+  requestId   String
+  adminId     String
+  message     String
+  visibleToClient Boolean @default(true)
+  createdAt   DateTime @default(now())
+
+  request     ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
